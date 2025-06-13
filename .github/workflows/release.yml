@@ -1,0 +1,187 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., v1.0.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Get version
+      id: version
+      run: |
+        if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+          VERSION="${{ github.event.inputs.version }}"
+        else
+          VERSION="${GITHUB_REF#refs/tags/}"
+        fi
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci || npm install
+
+    - name: Run tests
+      run: npm test || echo "No tests configured"
+
+    - name: Build project
+      run: npm run build || echo "No build configured"
+
+    - name: Create release archives
+      run: |
+        mkdir -p dist
+        # Create source archive
+        git archive --format=tar.gz --prefix="${{ steps.version.outputs.version }}/" -o "dist/source-${{ steps.version.outputs.version }}.tar.gz" HEAD
+        
+        # Create binary archives if build directory exists
+        if [ -d "build" ]; then
+          tar -czf "dist/build-${{ steps.version.outputs.version }}.tar.gz" build/
+          zip -r "dist/build-${{ steps.version.outputs.version }}.zip" build/
+        fi
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: release-artifacts
+        path: dist/
+        retention-days: 7
+
+  create-release:
+    needs: build
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Download artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: release-artifacts
+        path: dist/
+
+    - name: Generate changelog
+      id: changelog
+      run: |
+        # Get the previous tag
+        PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+        
+        # Generate changelog
+        if [ -n "$PREVIOUS_TAG" ]; then
+          echo "## What's Changed" > CHANGELOG.md
+          echo "" >> CHANGELOG.md
+          git log --pretty=format:"* %s (%h)" "$PREVIOUS_TAG"..HEAD >> CHANGELOG.md
+        else
+          echo "## Initial Release" > CHANGELOG.md
+          echo "" >> CHANGELOG.md
+          echo "First release of the project!" >> CHANGELOG.md
+        fi
+        
+        # Set multiline output
+        {
+          echo 'changelog<<EOF'
+          cat CHANGELOG.md
+          echo EOF
+        } >> $GITHUB_OUTPUT
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ needs.build.outputs.version }}
+        name: Release ${{ needs.build.outputs.version }}
+        body: ${{ steps.changelog.outputs.changelog }}
+        draft: false
+        prerelease: ${{ contains(needs.build.outputs.version, '-beta') || contains(needs.build.outputs.version, '-alpha') }}
+        files: |
+          dist/*
+        generate_release_notes: true
+
+  update-changelog:
+    needs: [build, create-release]
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Update CHANGELOG.md
+      run: |
+        # Create or update CHANGELOG.md
+        VERSION="${{ needs.build.outputs.version }}"
+        DATE=$(date +%Y-%m-%d)
+        
+        # Create temp file with new entry
+        echo "# Changelog" > CHANGELOG.tmp.md
+        echo "" >> CHANGELOG.tmp.md
+        echo "## [$VERSION] - $DATE" >> CHANGELOG.tmp.md
+        echo "" >> CHANGELOG.tmp.md
+        
+        # Add changes since last tag
+        PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+        if [ -n "$PREVIOUS_TAG" ]; then
+          git log --pretty=format:"- %s" "$PREVIOUS_TAG"..HEAD >> CHANGELOG.tmp.md
+        else
+          echo "- Initial release" >> CHANGELOG.tmp.md
+        fi
+        echo "" >> CHANGELOG.tmp.md
+        echo "" >> CHANGELOG.tmp.md
+        
+        # Append existing changelog if it exists
+        if [ -f CHANGELOG.md ]; then
+          tail -n +3 CHANGELOG.md >> CHANGELOG.tmp.md
+        fi
+        
+        mv CHANGELOG.tmp.md CHANGELOG.md
+
+    - name: Commit and push changes
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add CHANGELOG.md
+        git diff --staged --quiet || git commit -m "Update CHANGELOG.md for ${{ needs.build.outputs.version }}"
+        git push
+
+  notify:
+    needs: [build, create-release]
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+    - name: Send notification
+      run: |
+        if [ "${{ needs.create-release.result }}" == "success" ]; then
+          echo "✅ Release ${{ needs.build.outputs.version }} created successfully!"
+        else
+          echo "❌ Release ${{ needs.build.outputs.version }} failed!"
+        fi

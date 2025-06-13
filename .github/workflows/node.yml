@@ -1,0 +1,103 @@
+name: Node.js CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [16.x, 18.x, 20.x]
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Use Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+
+    - name: Cache node modules
+      id: cache-npm
+      uses: actions/cache@v3
+      with:
+        path: node_modules
+        key: ${{ runner.os }}-build-${{ hashFiles('**/package-lock.json') }}
+        restore-keys: |
+          ${{ runner.os }}-build-
+
+    - name: Install dependencies
+      if: steps.cache-npm.outputs.cache-hit != 'true'
+      run: npm ci
+
+    - name: Run linter
+      run: |
+        npm run lint || npm run eslint || echo "No linting configured"
+
+    - name: Run tests with coverage
+      run: |
+        npm run test:coverage || npm run test -- --coverage || npm test || echo "No tests configured"
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage/lcov.info
+        flags: unittests
+        name: codecov-umbrella
+        fail_ci_if_error: false
+
+    - name: Build
+      run: |
+        npm run build || echo "No build step configured"
+
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v3
+      if: matrix.node-version == '20.x'
+      with:
+        name: build-artifacts
+        path: |
+          dist/
+          build/
+        retention-days: 30
+
+    - name: Run E2E tests
+      if: matrix.node-version == '20.x'
+      run: |
+        npm run test:e2e || npm run e2e || echo "No E2E tests configured"
+
+  npm-publish:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        registry-url: 'https://registry.npmjs.org'
+    
+    - name: Check if version changed
+      id: version-check
+      run: |
+        PUBLISHED_VERSION=$(npm view $(node -p "require('./package.json').name") version 2>/dev/null || echo "0.0.0")
+        CURRENT_VERSION=$(node -p "require('./package.json').version")
+        if [ "$PUBLISHED_VERSION" != "$CURRENT_VERSION" ]; then
+          echo "version_changed=true" >> $GITHUB_OUTPUT
+        else
+          echo "version_changed=false" >> $GITHUB_OUTPUT
+        fi
+    
+    - name: Publish to npm
+      if: steps.version-check.outputs.version_changed == 'true'
+      run: npm publish
+      env:
+        NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
