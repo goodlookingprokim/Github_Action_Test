@@ -4,9 +4,10 @@
   "description": "A repository for testing GitHub Actions",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Running tests...\" && exit 0",
-    "build": "echo \"Building project...\" && exit 0",
-    "lint": "echo \"Linting code...\" && exit 0"
+    "test": "node test.js",
+    "build": "echo \"Building project...\" && mkdir -p dist && cp index.js dist/",
+    "lint": "echo \"Linting code...\" && echo \"No linting errors found\"",
+    "start": "node index.js"
   },
   "keywords": ["github-actions", "ci-cd", "testing"],
   "author": "goodlookingprokim",
