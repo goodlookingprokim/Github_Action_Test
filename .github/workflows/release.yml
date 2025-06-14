@@ -105,11 +105,12 @@ jobs:
           echo "First release of the project!" >> CHANGELOG.md
         fi
         
-        # Set multiline output
+        # Set multiline output using a unique delimiter
+        DELIMITER="$(openssl rand -hex 8)"
         {
-          echo 'changelog<<EOF'
+          echo "changelog<<${DELIMITER}"
           cat CHANGELOG.md
-          echo EOF
+          echo "${DELIMITER}"
         } >> $GITHUB_OUTPUT
 
     - name: Create GitHub Release
