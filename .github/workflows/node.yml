@@ -100,11 +100,13 @@ jobs:
         fi
     
     - name: Publish to npm
-      if: steps.version-check.outputs.version_changed == 'true' && secrets.NPM_TOKEN != ''
-      run: npm publish
+      if: steps.version-check.outputs.version_changed == 'true'
+      run: |
+        if [ -z "$NODE_AUTH_TOKEN" ]; then
+          echo "Skipping npm publish - no NPM_TOKEN secret configured"
+          exit 0
+        fi
+        npm publish
       env:
         NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        
-    - name: Skip publish (no NPM token)
-      if: steps.version-check.outputs.version_changed == 'true' && secrets.NPM_TOKEN == ''
-      run: echo "Skipping npm publish - no NPM_TOKEN secret configured"
+      continue-on-error: true

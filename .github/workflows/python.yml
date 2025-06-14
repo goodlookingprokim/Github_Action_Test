@@ -117,12 +117,20 @@ jobs:
         name: python-package-distributions
         path: dist/
     
+    - name: Check PyPI token
+      id: check-token
+      run: |
+        if [ -z "$PYPI_TOKEN" ]; then
+          echo "token_exists=false" >> $GITHUB_OUTPUT
+          echo "Skipping PyPI publish - no PYPI_API_TOKEN secret configured"
+        else
+          echo "token_exists=true" >> $GITHUB_OUTPUT
+        fi
+      env:
+        PYPI_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+        
     - name: Publish to PyPI
-      if: secrets.PYPI_API_TOKEN != ''
+      if: steps.check-token.outputs.token_exists == 'true'
       uses: pypa/gh-action-pypi-publish@release/v1
       with:
         password: ${{ secrets.PYPI_API_TOKEN }}
-        
-    - name: Skip publish (no PyPI token)
-      if: secrets.PYPI_API_TOKEN == ''
-      run: echo "Skipping PyPI publish - no PYPI_API_TOKEN secret configured"
