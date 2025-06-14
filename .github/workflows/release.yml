@@ -141,48 +141,11 @@ jobs:
       contents: write
     
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-        token: ${{ secrets.GITHUB_TOKEN }}
-
-    - name: Update CHANGELOG.md
+    - name: Skip changelog update
       run: |
-        # Create or update CHANGELOG.md
-        VERSION="${{ needs.build.outputs.version }}"
-        DATE=$(date +%Y-%m-%d)
-        
-        # Create temp file with new entry
-        echo "# Changelog" > CHANGELOG.tmp.md
-        echo "" >> CHANGELOG.tmp.md
-        echo "## [$VERSION] - $DATE" >> CHANGELOG.tmp.md
-        echo "" >> CHANGELOG.tmp.md
-        
-        # Add changes since last tag
-        PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
-        if [ -n "$PREVIOUS_TAG" ]; then
-          git log --pretty=format:"- %s" "$PREVIOUS_TAG"..HEAD >> CHANGELOG.tmp.md
-        else
-          echo "- Initial release" >> CHANGELOG.tmp.md
-        fi
-        echo "" >> CHANGELOG.tmp.md
-        echo "" >> CHANGELOG.tmp.md
-        
-        # Append existing changelog if it exists
-        if [ -f CHANGELOG.md ]; then
-          tail -n +3 CHANGELOG.md >> CHANGELOG.tmp.md
-        fi
-        
-        mv CHANGELOG.tmp.md CHANGELOG.md
-
-    - name: Commit and push changes
-      run: |
-        git config --local user.email "action@github.com"
-        git config --local user.name "GitHub Action"
-        git add CHANGELOG.md
-        git diff --staged --quiet || git commit -m "Update CHANGELOG.md for ${{ needs.build.outputs.version }}"
-        git push
+        echo "Changelog update is disabled to avoid permission issues"
+        echo "Releases are created with auto-generated notes instead"
+        echo "Release v${{ needs.build.outputs.version }} was successfully created!"
 
   notify:
     needs: [build, create-release]
