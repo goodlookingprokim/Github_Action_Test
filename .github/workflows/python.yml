@@ -90,15 +90,28 @@ jobs:
         python -m pip install --upgrade pip
         pip install build twine
     
+    - name: Check if Python package
+      id: package-check
+      run: |
+        if [ -f "setup.py" ] || [ -f "pyproject.toml" ]; then
+          echo "is_package=true" >> $GITHUB_OUTPUT
+        else
+          echo "is_package=false" >> $GITHUB_OUTPUT
+          echo "No setup.py or pyproject.toml found - skipping package build"
+        fi
+    
     - name: Build package
+      if: steps.package-check.outputs.is_package == 'true'
       run: |
         python -m build
     
     - name: Check package
+      if: steps.package-check.outputs.is_package == 'true'
       run: |
         twine check dist/*
     
     - name: Upload build artifacts
+      if: steps.package-check.outputs.is_package == 'true'
       uses: actions/upload-artifact@v4
       with:
         name: python-package-distributions
@@ -116,6 +129,7 @@ jobs:
       with:
         name: python-package-distributions
         path: dist/
+      continue-on-error: true
     
     - name: Check PyPI token
       id: check-token
