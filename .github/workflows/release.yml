@@ -21,6 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
+      previous_tag: ${{ steps.version.outputs.previous_tag }}
       
     steps:
     - name: Checkout code
@@ -36,7 +37,12 @@ jobs:
         else
           VERSION="${GITHUB_REF#refs/tags/}"
         fi
+        
+        # Get previous tag
+        PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+        
         echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "previous_tag=$PREVIOUS_TAG" >> $GITHUB_OUTPUT
 
     - name: Setup Node.js
       uses: actions/setup-node@v4
@@ -105,20 +111,23 @@ jobs:
           echo "First release of the project!" >> CHANGELOG.md
         fi
         
-        # Set multiline output using a unique delimiter
-        DELIMITER="$(openssl rand -hex 8)"
-        {
-          echo "changelog<<${DELIMITER}"
-          cat CHANGELOG.md
-          echo "${DELIMITER}"
-        } >> $GITHUB_OUTPUT
+        # Create a simple summary for the release
+        if [ -n "$PREVIOUS_TAG" ]; then
+          SUMMARY="Updates since $PREVIOUS_TAG"
+        else
+          SUMMARY="Initial release of the project"
+        fi
+        echo "changelog=$SUMMARY" >> $GITHUB_OUTPUT
 
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v1
       with:
         tag_name: ${{ needs.build.outputs.version }}
         name: Release ${{ needs.build.outputs.version }}
-        body: ${{ steps.changelog.outputs.changelog }}
+        body: |
+          ${{ steps.changelog.outputs.changelog }}
+          
+          **Full Changelog**: https://github.com/${{ github.repository }}/compare/${{ needs.build.outputs.previous_tag }}...${{ needs.build.outputs.version }}
         draft: false
         prerelease: ${{ contains(needs.build.outputs.version, '-beta') || contains(needs.build.outputs.version, '-alpha') }}
         files: |
