@@ -11,11 +11,13 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from hello import greet, add
 
+
 def test_greet():
     """Test the greet function"""
     assert greet() == "Hello, World!"
     assert greet("Test") == "Hello, Test!"
     print("✓ greet() tests passed")
+
 
 def test_add():
     """Test the add function"""
@@ -24,12 +26,14 @@ def test_add():
     assert add(-1, 1) == 0
     print("✓ add() tests passed")
 
+
 def main():
     """Run all tests"""
     print("Running Python tests...")
     test_greet()
     test_add()
     print("All Python tests passed! 🎉")
+
 
 if __name__ == "__main__":
     main()
